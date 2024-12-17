@@ -114,6 +114,9 @@ def login():
             user = User(user_data['id'], user_data['username'], user_data['password'])
             login_user(user)
             return redirect(url_for('profile'))
+        else:
+            # Add error message for invalid credentials
+            return render_template('login.html', error="Invalid username or password")
 
     return render_template('login.html')
 
