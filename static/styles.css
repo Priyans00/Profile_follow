@@ -23,6 +23,7 @@ body {
     box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
     width: 100%;
     max-width: 400px;
+    position: relative;
 }
 
 h1 {
@@ -346,4 +347,22 @@ a:hover {
     margin-top: 1rem;
     padding-top: 1rem;
     border-top: 1px solid #eee;
+}
+
+/* error message */
+.error-message {
+    background-color: #ffebee;
+    color: #c62828;
+    padding: 12px;
+    border-radius: 5px;
+    margin-bottom: 1rem;
+    text-align: center;
+    border: 1px solid #ffcdd2;
+    animation: shake 0.5s ease-in-out;
+}
+
+@keyframes shake {
+    0%, 100% { transform: translateX(0); }
+    25% { transform: translateX(-5px); }
+    75% { transform: translateX(5px); }
 }
