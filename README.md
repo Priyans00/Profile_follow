@@ -3,7 +3,7 @@
 </p>
 <p align="center"><h1 align="center">PROFILE_FOLLOW</h1></p>
 <p align="center">
-	<em><code>❯ REPLACE-ME</code></em>
+	<em><code>> CREATED BY PRIYANS00</code></em>
 </p>
 <p align="center">
 	<img src="https://img.shields.io/github/license/Priyans00/Profile_follow?style=default&logo=opensourceinitiative&logoColor=white&color=0080ff" alt="license">
