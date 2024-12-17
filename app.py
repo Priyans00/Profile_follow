@@ -260,6 +260,5 @@ def followed_users():
     
     return render_template('followed_users.html', followed_stats=followed_stats)
 
-if __name__ == '__main__':
-    app.run(debug=True)
+
 
