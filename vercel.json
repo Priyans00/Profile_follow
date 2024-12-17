@@ -11,5 +11,9 @@
             "src": "/(.*)",
             "dest": "wsgi.py"
         }
-    ]
+    ],
+    "env": {
+        "FLASK_ENV": "production",
+        "VERCEL_ENV": "production"
+    }
 }
