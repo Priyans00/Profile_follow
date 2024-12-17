@@ -5,6 +5,7 @@ import sqlite3
 import os
 import requests
 import json
+from datetime import datetime
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'your_secret_key'
@@ -22,16 +23,33 @@ class User(UserMixin):
         self.password = password
         self.leetcode_username = None
 
-# Create database and users table
+# Modify the database path to work with Vercel
+def get_db_path():
+    if os.environ.get('VERCEL_ENV') == 'production':
+        # Use /tmp directory in Vercel's environment
+        return '/tmp/users.db'
+    return 'users.db'
+
+# Modify database connection function
+def get_db_connection():
+    db_path = get_db_path()
+    # Create directory if it doesn't exist in Vercel
+    os.makedirs(os.path.dirname(db_path), exist_ok=True)
+    conn = sqlite3.connect(db_path)
+    conn.row_factory = sqlite3.Row
+    return conn
+
+# Modify init_db function
 def init_db():
-    conn = sqlite3.connect('users.db')
+    conn = get_db_connection()
     c = conn.cursor()
     c.execute('''
         CREATE TABLE IF NOT EXISTS users (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             username TEXT UNIQUE NOT NULL,
             password TEXT NOT NULL,
-            leetcode_username TEXT
+            leetcode_username TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     ''')
     c.execute('''
@@ -46,18 +64,18 @@ def init_db():
     conn.commit()
     conn.close()
 
-# Initialize database
+# Initialize database on startup
 init_db()
 
 @login_manager.user_loader
 def load_user(user_id):
-    conn = sqlite3.connect('users.db')
+    conn = get_db_connection()
     c = conn.cursor()
     c.execute('SELECT * FROM users WHERE id = ?', (user_id,))
     user_data = c.fetchone()
     conn.close()
     if user_data:
-        return User(user_data[0], user_data[1], user_data[2])
+        return User(user_data['id'], user_data['username'], user_data['password'])
     return None
 
 @app.route('/register', methods=['GET', 'POST'])
@@ -67,7 +85,7 @@ def register():
         password = request.form['password']
         hashed_password = generate_password_hash(password, method='pbkdf2:sha256')
         
-        conn = sqlite3.connect('users.db')
+        conn = get_db_connection()
         c = conn.cursor()
         try:
             c.execute('INSERT INTO users (username, password) VALUES (?, ?)',
@@ -86,14 +104,14 @@ def login():
         username = request.form['username']
         password = request.form['password']
         
-        conn = sqlite3.connect('users.db')
+        conn = get_db_connection()
         c = conn.cursor()
         c.execute('SELECT * FROM users WHERE username = ?', (username,))
         user_data = c.fetchone()
         conn.close()
 
-        if user_data and check_password_hash(user_data[2], password):
-            user = User(user_data[0], user_data[1], user_data[2])
+        if user_data and check_password_hash(user_data['password'], password):
+            user = User(user_data['id'], user_data['username'], user_data['password'])
             login_user(user)
             return redirect(url_for('profile'))
 
@@ -102,17 +120,17 @@ def login():
 @app.route('/profile')
 @login_required
 def profile():
-    conn = sqlite3.connect('users.db')
+    conn = get_db_connection()
     c = conn.cursor()
     
     # Get user's leetcode username
     c.execute('SELECT leetcode_username FROM users WHERE id = ?', (current_user.id,))
     result = c.fetchone()
-    leetcode_username = result[0] if result and result[0] else None
+    leetcode_username = result['leetcode_username'] if result else None
     
     # Get followed leetcode usernames
     c.execute('SELECT leetcode_username FROM followed_leetcode WHERE user_id = ?', (current_user.id,))
-    followed_usernames = [row[0] for row in c.fetchall()]
+    followed_usernames = [row['leetcode_username'] for row in c.fetchall()]
     conn.close()
     
     # Get stats for user and followed users
@@ -202,7 +220,7 @@ def update_leetcode():
         return jsonify({'error': 'Invalid LeetCode username'}), 400
     
     # Update the database
-    conn = sqlite3.connect('users.db')
+    conn = get_db_connection()
     c = conn.cursor()
     c.execute('UPDATE users SET leetcode_username = ? WHERE id = ?',
               (leetcode_username, current_user.id))
@@ -218,7 +236,7 @@ def follow_leetcode():
     if not leetcode_username:
         return jsonify({'error': 'No username provided'}), 400
     
-    conn = sqlite3.connect('users.db')
+    conn = get_db_connection()
     c = conn.cursor()
     try:
         c.execute('INSERT INTO followed_leetcode (user_id, leetcode_username) VALUES (?, ?)',
@@ -235,7 +253,7 @@ def follow_leetcode():
 def unfollow_leetcode():
     leetcode_username = request.form.get('leetcode_username')
     
-    conn = sqlite3.connect('users.db')
+    conn = get_db_connection()
     c = conn.cursor()
     c.execute('DELETE FROM followed_leetcode WHERE user_id = ? AND leetcode_username = ?',
               (current_user.id, leetcode_username))
@@ -246,10 +264,10 @@ def unfollow_leetcode():
 @app.route('/following')
 @login_required
 def followed_users():
-    conn = sqlite3.connect('users.db')
+    conn = get_db_connection()
     c = conn.cursor()
     c.execute('SELECT leetcode_username FROM followed_leetcode WHERE user_id = ?', (current_user.id,))
-    followed_usernames = [row[0] for row in c.fetchall()]
+    followed_usernames = [row['leetcode_username'] for row in c.fetchall()]
     conn.close()
     
     followed_stats = []
