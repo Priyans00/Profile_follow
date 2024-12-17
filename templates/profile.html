@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Profile</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+</head>
+<body>
+    <div class="container profile-container">
+        <nav class="profile-nav">
+            <a href="{{ url_for('profile') }}" class="nav-link active">My Profile</a>
+            <a href="{{ url_for('followed_users') }}" class="nav-link">Following</a>
+            <a href="{{ url_for('logout') }}" class="nav-link logout">Logout</a>
+        </nav>
+
+        <div class="profile-content">
+            <h1>Welcome, {{ current_user.username }}!</h1>
+            
+            <div class="leetcode-form">
+                <h2>{% if leetcode_username %}Update{% else %}Connect{% endif %} LeetCode Account</h2>
+                <form id="leetcodeForm">
+                    <input type="text" name="leetcode_username" placeholder="LeetCode Username" 
+                           value="{{ leetcode_username if leetcode_username else '' }}" required>
+                    <input type="submit" value="{% if leetcode_username %}Update{% else %}Connect{% endif %}">
+                </form>
+            </div>
+
+            {% if leetcode_username %}
+            <div class="leetcode-stats">
+                <h2>Your LeetCode Stats ({{ leetcode_username }})</h2>
+                {% if leetcode_stats %}
+                <div class="stats-grid">
+                    <div class="stat-box">
+                        <h3>Problems Solved</h3>
+                        <p>{{ leetcode_stats.total_solved }}</p>
+                    </div>
+                    <div class="stat-box">
+                        <h3>Easy</h3>
+                        <p>{{ leetcode_stats.easy }}</p>
+                    </div>
+                    <div class="stat-box">
+                        <h3>Medium</h3>
+                        <p>{{ leetcode_stats.medium }}</p>
+                    </div>
+                    <div class="stat-box">
+                        <h3>Hard</h3>
+                        <p>{{ leetcode_stats.hard }}</p>
+                    </div>
+                    <div class="stat-box">
+                        <h3>Ranking</h3>
+                        <p>{{ leetcode_stats.ranking }}</p>
+                    </div>
+                </div>
+                {% else %}
+                <p>Unable to fetch LeetCode stats</p>
+                {% endif %}
+            </div>
+            {% endif %}
+        </div>
+    </div>
+
+    <script>
+        document.getElementById('leetcodeForm')?.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const username = e.target.leetcode_username.value;
+            
+            try {
+                const response = await fetch('/update_leetcode', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded',
+                    },
+                    body: `leetcode_username=${encodeURIComponent(username)}`
+                });
+                
+                if (response.ok) {
+                    window.location.reload();
+                } else {
+                    const data = await response.json();
+                    alert(data.error || 'Failed to update LeetCode username');
+                }
+            } catch (error) {
+                alert('Error updating LeetCode username');
+            }
+        });
+    </script>
+</body>
+</html>

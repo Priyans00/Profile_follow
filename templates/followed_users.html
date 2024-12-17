@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Following - LeetCode Users</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+</head>
+<body>
+    <div class="container followed-container">
+        <nav class="profile-nav">
+            <a href="{{ url_for('profile') }}" class="nav-link">My Profile</a>
+            <a href="{{ url_for('followed_users') }}" class="nav-link active">Following</a>
+            <a href="{{ url_for('logout') }}" class="nav-link logout">Logout</a>
+        </nav>
+
+        <div class="followed-content">
+            <h1>Following</h1>
+            
+            <div class="follow-form">
+                <h2>Follow New User</h2>
+                <form id="followForm">
+                    <input type="text" name="follow_username" placeholder="LeetCode Username" required>
+                    <input type="submit" value="Follow">
+                </form>
+            </div>
+
+            <div class="followed-users-grid">
+                {% if followed_stats %}
+                    {% for stats in followed_stats %}
+                    <div class="user-card">
+                        <div class="user-card-header">
+                            <h3>{{ stats.username }}</h3>
+                            <button class="unfollow-btn" onclick="unfollowUser('{{ stats.username }}')">Unfollow</button>
+                        </div>
+                        <div class="user-card-stats">
+                            <div class="stat-item">
+                                <span class="stat-label">Total Solved</span>
+                                <span class="stat-value">{{ stats.total_solved }}</span>
+                            </div>
+                            <div class="stat-row">
+                                <div class="stat-item">
+                                    <span class="stat-label">Easy</span>
+                                    <span class="stat-value easy">{{ stats.easy }}</span>
+                                </div>
+                                <div class="stat-item">
+                                    <span class="stat-label">Medium</span>
+                                    <span class="stat-value medium">{{ stats.medium }}</span>
+                                </div>
+                                <div class="stat-item">
+                                    <span class="stat-label">Hard</span>
+                                    <span class="stat-value hard">{{ stats.hard }}</span>
+                                </div>
+                            </div>
+                            <div class="stat-item ranking">
+                                <span class="stat-label">Ranking</span>
+                                <span class="stat-value">#{{ stats.ranking }}</span>
+                            </div>
+                        </div>
+                    </div>
+                    {% endfor %}
+                {% else %}
+                    <p class="no-followed">You haven't followed any LeetCode users yet.</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <script>
+        document.getElementById('followForm')?.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const username = e.target.follow_username.value;
+            
+            try {
+                const response = await fetch('/follow_leetcode', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded',
+                    },
+                    body: `leetcode_username=${encodeURIComponent(username)}`
+                });
+                
+                if (response.ok) {
+                    window.location.reload();
+                } else {
+                    const data = await response.json();
+                    alert(data.error || 'Failed to follow user');
+                }
+            } catch (error) {
+                alert('Error following user');
+            }
+        });
+
+        async function unfollowUser(username) {
+            if (confirm(`Are you sure you want to unfollow ${username}?`)) {
+                try {
+                    const response = await fetch('/unfollow_leetcode', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/x-www-form-urlencoded',
+                        },
+                        body: `leetcode_username=${encodeURIComponent(username)}`
+                    });
+                    
+                    if (response.ok) {
+                        window.location.reload();
+                    } else {
+                        alert('Failed to unfollow user');
+                    }
+                } catch (error) {
+                    alert('Error unfollowing user');
+                }
+            }
+        }
+    </script>
+</body>
+</html> 
