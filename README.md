@@ -247,7 +247,7 @@ This project is protected under the MIT License. For more details, refer to the 
 
 ## 🙌 Acknowledgments
 
-- List any resources, contributors, inspiration, etc. here.
+- Still waiting to fill this ...
 
 ---
  
