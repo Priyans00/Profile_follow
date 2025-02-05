@@ -1,14 +1,21 @@
 from flask import Flask, render_template, redirect, url_for, request, jsonify
 from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
 from werkzeug.security import generate_password_hash, check_password_hash
-import sqlite3
 import os
 import requests
 import json
 from datetime import datetime
+from supabase import create_client, Client
+from dotenv import load_dotenv
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'your_secret_key'
+
+load_dotenv()  # Load environment variables from .env file
+
+# Now you can access the variables
+url = os.environ.get('SUPABASE_URL')
+key = os.environ.get('SUPABASE_KEY')
 
 # Initialize Flask-Login
 login_manager = LoginManager()
@@ -17,11 +24,9 @@ login_manager.login_view = 'login'
 
 # User class for Flask-Login
 class User(UserMixin):
-    def __init__(self, id, username, password):
+    def __init__(self, id, username):
         self.id = id
         self.username = username
-        self.password = password
-        self.leetcode_username = None
 
 # Modify the database path to work with Vercel
 def get_db_path():
@@ -32,50 +37,28 @@ def get_db_path():
 
 # Modify database connection function
 def get_db_connection():
-    db_path = get_db_path()
-    # Create directory if it doesn't exist in Vercel
-    os.makedirs(os.path.dirname(db_path), exist_ok=True)
-    conn = sqlite3.connect(db_path)
-    conn.row_factory = sqlite3.Row
-    return conn
+    # Use Supabase client instead of SQLite
+    if not url or not key:
+        raise ValueError("Supabase URL and Key must be set in environment variables.")
+    print(url, key)
+    supabase: Client = create_client(url, key)
+    return supabase
 
 # Modify init_db function
 def init_db():
-    conn = get_db_connection()
-    c = conn.cursor()
-    c.execute('''
-        CREATE TABLE IF NOT EXISTS users (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            username TEXT UNIQUE NOT NULL,
-            password TEXT NOT NULL,
-            leetcode_username TEXT,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )
-    ''')
-    c.execute('''
-        CREATE TABLE IF NOT EXISTS followed_leetcode (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            user_id INTEGER,
-            leetcode_username TEXT,
-            FOREIGN KEY (user_id) REFERENCES users (id),
-            UNIQUE(user_id, leetcode_username)
-        )
-    ''')
-    conn.commit()
-    conn.close()
+    # Supabase handles table creation, so this may not be necessary
+    pass
 
 # Initialize database on startup
 init_db()
 
 @login_manager.user_loader
 def load_user(user_id):
-    conn = get_db_connection()
-    c = conn.cursor()
-    c.execute('SELECT * FROM users WHERE id = ?', (user_id,))
-    user_data = c.fetchone()
-    conn.close()
+    supabase = get_db_connection()
+    user_data = supabase.table('users').select('*').eq('id', user_id).execute().data
     if user_data:
-        return User(user_data['id'], user_data['username'], user_data['password'])
+        user_data = user_data[0]  # Get the first user
+        return User(user_data['id'], user_data['username'])
     return None
 
 @app.route('/register', methods=['GET', 'POST'])
@@ -85,16 +68,11 @@ def register():
         password = request.form['password']
         hashed_password = generate_password_hash(password, method='pbkdf2:sha256')
         
-        conn = get_db_connection()
-        c = conn.cursor()
+        supabase = get_db_connection()
         try:
-            c.execute('INSERT INTO users (username, password) VALUES (?, ?)',
-                     (username, hashed_password))
-            conn.commit()
-        except sqlite3.IntegrityError:
-            conn.close()
-            return "Username already exists!"
-        conn.close()
+            supabase.table('users').insert({'username': username, 'password': hashed_password}).execute()
+        except Exception as e:
+            return "Username already exists!"  # Handle unique constraint error
         return redirect(url_for('login'))
     return render_template('register.html')
 
@@ -104,18 +82,14 @@ def login():
         username = request.form['username']
         password = request.form['password']
         
-        conn = get_db_connection()
-        c = conn.cursor()
-        c.execute('SELECT * FROM users WHERE username = ?', (username,))
-        user_data = c.fetchone()
-        conn.close()
+        supabase = get_db_connection()
+        user_data = supabase.table('users').select('*').eq('username', username).execute().data
 
-        if user_data and check_password_hash(user_data['password'], password):
-            user = User(user_data['id'], user_data['username'], user_data['password'])
+        if user_data and check_password_hash(user_data[0]['password'], password):
+            user = User(user_data[0]['id'], user_data[0]['username'])
             login_user(user)
             return redirect(url_for('profile'))
         else:
-            # Add error message for invalid credentials
             return render_template('login.html', error="Invalid username or password")
 
     return render_template('login.html')
@@ -123,18 +97,12 @@ def login():
 @app.route('/profile')
 @login_required
 def profile():
-    conn = get_db_connection()
-    c = conn.cursor()
+    supabase = get_db_connection()
+    user_data = supabase.table('users').select('leetcode_username').eq('id', current_user.id).execute().data
+    leetcode_username = user_data[0]['leetcode_username'] if user_data else None
     
-    # Get user's leetcode username
-    c.execute('SELECT leetcode_username FROM users WHERE id = ?', (current_user.id,))
-    result = c.fetchone()
-    leetcode_username = result['leetcode_username'] if result else None
-    
-    # Get followed leetcode usernames
-    c.execute('SELECT leetcode_username FROM followed_leetcode WHERE user_id = ?', (current_user.id,))
-    followed_usernames = [row['leetcode_username'] for row in c.fetchall()]
-    conn.close()
+    followed_usernames = supabase.table('followed_leetcode').select('leetcode_username').eq('user_id', current_user.id).execute().data
+    followed_usernames = [row['leetcode_username'] for row in followed_usernames]
     
     # Get stats for user and followed users
     leetcode_stats = None
@@ -223,12 +191,8 @@ def update_leetcode():
         return jsonify({'error': 'Invalid LeetCode username'}), 400
     
     # Update the database
-    conn = get_db_connection()
-    c = conn.cursor()
-    c.execute('UPDATE users SET leetcode_username = ? WHERE id = ?',
-              (leetcode_username, current_user.id))
-    conn.commit()
-    conn.close()
+    supabase = get_db_connection()
+    supabase.table('users').update({'leetcode_username': leetcode_username}).eq('id', current_user.id).execute()
     
     return jsonify(stats)
 
@@ -239,39 +203,28 @@ def follow_leetcode():
     if not leetcode_username:
         return jsonify({'error': 'No username provided'}), 400
     
-    conn = get_db_connection()
-    c = conn.cursor()
+    supabase = get_db_connection()
     try:
-        c.execute('INSERT INTO followed_leetcode (user_id, leetcode_username) VALUES (?, ?)',
-                  (current_user.id, leetcode_username))
-        conn.commit()
-        conn.close()
+        supabase.table('followed_leetcode').insert({'user_id': current_user.id, 'leetcode_username': leetcode_username}).execute()
         return jsonify({'success': True})
-    except sqlite3.IntegrityError:
-        conn.close()
-        return jsonify({'error': 'Already following this user'}), 400
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
 @app.route('/unfollow_leetcode', methods=['POST'])
 @login_required
 def unfollow_leetcode():
     leetcode_username = request.form.get('leetcode_username')
     
-    conn = get_db_connection()
-    c = conn.cursor()
-    c.execute('DELETE FROM followed_leetcode WHERE user_id = ? AND leetcode_username = ?',
-              (current_user.id, leetcode_username))
-    conn.commit()
-    conn.close()
+    supabase = get_db_connection()
+    supabase.table('followed_leetcode').delete().eq('user_id', current_user.id).eq('leetcode_username', leetcode_username).execute()
     return jsonify({'success': True})
 
 @app.route('/following')
 @login_required
 def followed_users():
-    conn = get_db_connection()
-    c = conn.cursor()
-    c.execute('SELECT leetcode_username FROM followed_leetcode WHERE user_id = ?', (current_user.id,))
-    followed_usernames = [row['leetcode_username'] for row in c.fetchall()]
-    conn.close()
+    supabase = get_db_connection()
+    followed_usernames = supabase.table('followed_leetcode').select('leetcode_username').eq('user_id', current_user.id).execute().data
+    followed_usernames = [row['leetcode_username'] for row in followed_usernames]
     
     followed_stats = []
     for username in followed_usernames:
